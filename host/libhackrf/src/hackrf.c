@@ -191,6 +191,8 @@ static const uint16_t hackrf_jawbreaker_usb_pid = 0x604b;
 static const uint16_t hackrf_one_usb_pid = 0x6089;
 static const uint16_t rad1o_usb_pid = 0xcc15;
 
+static uint16_t open_devices = 0;
+
 static libusb_context* g_libusb_context = NULL;
 
 enum libusb_error last_libusb_error = LIBUSB_SUCCESS;
@@ -416,6 +418,8 @@ extern "C" {
 
 enum hackrf_error ADDCALL
 hackrf_init() {
+    open_devices++;
+
     if(g_libusb_context != NULL) {
         return HACKRF_SUCCESS;
     }
@@ -423,6 +427,7 @@ hackrf_init() {
     enum libusb_error error = libusb_init(&g_libusb_context);
     if(error != 0) {
         last_libusb_error = error;
+        open_devices--;
         return HACKRF_ERROR_LIBUSB;
     }
 
@@ -431,12 +436,15 @@ hackrf_init() {
 
 enum hackrf_error ADDCALL
 hackrf_exit() {
-    if(g_libusb_context != NULL) {
-        libusb_exit(g_libusb_context);
-        g_libusb_context = NULL;
+    if(open_devices == 0) {
+        if(g_libusb_context != NULL) {
+            libusb_exit(g_libusb_context);
+            g_libusb_context = NULL;
+        }
+        return HACKRF_SUCCESS;
+    } else {
+        return HACKRF_ERROR_NOT_LAST_DEVICE;
     }
-
-    return HACKRF_SUCCESS;
 }
 
 #ifndef LIBRARY_VERSION
@@ -1808,6 +1816,8 @@ hackrf_close(hackrf_device* device) {
         free(device);
     }
 
+    open_devices--;
+
     if(result2 != HACKRF_SUCCESS) {
         return result2;
     }
@@ -1858,6 +1868,9 @@ hackrf_error_name(enum hackrf_error errcode) {
 
     case HACKRF_ERROR_USB_API_VERSION:
         return "feature not supported by installed firmware";
+
+    case HACKRF_ERROR_NOT_LAST_DEVICE:
+        return "some hackrf device is still in use";
 
     case HACKRF_ERROR_OTHER:
         return "unspecified error";
